@@ -1,13 +1,16 @@
-# LLDP Switch Logger
+# FlukeNet
 
-Real-time LLDP switch detection with CSV logging and universal compatibility.
+Real-time LLDP switch detection and network interface monitoring with CSV logging and universal compatibility.
 
 ## Features
-- Live switch detection
-- Full CSV history (latest on top)
-- Reset + Stop + Download
-- Auto interface detection
-- Direct access to local network interfaces
+
+- **Live LLDP Switch Detection** - Real-time detection and display of connected network switches
+- **Network Interface Monitoring** - Detailed interface information including IP, MAC, netmask, broadcast, MTU, and status
+- **Automatic Interface Updates** - Interface information and status refresh automatically
+- **CSV History Logging** - Complete detection history with downloadable CSV export
+- **Modern Fluke-Inspired UI** - Professional interface with amber color scheme
+- **Platform Agnostic** - Works on Linux, macOS, and Windows
+- **Auto Interface Detection** - Automatically discovers all available network interfaces
 
 ## Prerequisites
 
@@ -19,71 +22,41 @@ Real-time LLDP switch detection with CSV logging and universal compatibility.
 
 ## Installation
 
-### Step 1: Clone or Download
+### Step 1: Clone the Repository
 
 ```bash
-git clone <repository-url>
-cd lldp-switch-logger
+git clone git@github.com:badgerttl/flukenet.git
+cd flukenet
 ```
-
-Or download and extract the repository to a directory.
 
 ### Step 2: Install Dependencies
 
 **Linux:**
 ```bash
-# Install system dependencies (if needed)
 sudo apt-get update
 sudo apt-get install -y python3-pip python3-dev libpcap-dev
-
-# Install Python packages
 pip3 install -r requirements.txt
 ```
 
 **macOS:**
 ```bash
-# Install Python packages
 pip3 install -r requirements.txt
-
-# If you encounter issues with libpcap, install via Homebrew:
-brew install libpcap
+brew install libpcap  # If needed
 ```
 
 **Windows:**
 ```bash
-# Install Python packages
 pip install -r requirements.txt
-
-# Note: Packet capture on Windows may require additional setup
-# Consider using WSL2 (Windows Subsystem for Linux) for better compatibility
 ```
 
 ### Step 3: Run the Application
 
-**Linux (may require sudo for packet capture):**
 ```bash
-# Try without sudo first
+# Linux/macOS (may require sudo for packet capture)
 python3 app/lldp_app.py
 
-# If you get permission errors for packet capture, use sudo:
-sudo python3 app/lldp_app.py
-```
-
-**macOS:**
-```bash
-# Try without sudo first
-python3 app/lldp_app.py
-
-# If you get permission errors for packet capture, use sudo:
-sudo python3 app/lldp_app.py
-```
-
-**Windows:**
-```bash
-# Run normally
+# Windows
 python app/lldp_app.py
-
-# If you encounter issues, try running as Administrator
 ```
 
 The application will be available at `http://localhost:5002`
@@ -92,9 +65,27 @@ The application will be available at `http://localhost:5002`
 
 1. Open your web browser and navigate to `http://localhost:5002`
 2. Select a network interface from the dropdown menu
-3. Click "Start" to begin capturing LLDP packets
-4. View detected switches in real-time
-5. Download the CSV log file to save your results
+3. View detailed interface information (IP, MAC, netmask, network, broadcast, MTU, status)
+4. Click "Start" to begin capturing LLDP packets
+5. View detected switches in real-time with automatic updates
+6. Download the CSV log file or delete logs as needed
+
+## Features in Detail
+
+### Network Interface Display
+- Real-time interface information updates every 3 seconds
+- Automatic refresh when interface status changes (UP/DOWN)
+- Visual feedback with amber flash animations on updates
+
+### Switch Detection
+- Real-time LLDP packet capture and parsing
+- Displays switch name, port, chassis ID, MAC address, TTL, capabilities, and management IP
+- Automatic updates when new switches are detected
+
+### Log Management
+- Complete detection history in CSV format
+- Download logs for external analysis
+- Separate controls for resetting sniffing vs deleting logs
 
 ## Network Interface Access
 
@@ -106,25 +97,18 @@ This application requires access to network interfaces for packet sniffing:
 
 ### Linux - Running Without Sudo
 
-If you want to run without sudo on Linux, you can set capabilities:
-
 ```bash
-# Install libcap2-bin if not already installed
 sudo apt-get install libcap2-bin
-
-# Set capabilities on Python (allows packet capture without full root)
 sudo setcap cap_net_raw,cap_net_admin+eip $(readlink -f $(which python3))
 ```
 
-**Note**: This allows Python to capture packets without running as root, but you may need to reapply this after Python updates.
+**Note**: You may need to reapply this after Python updates.
 
 ### macOS - Network Permissions
 
-On macOS, you may need to grant network permissions:
-
-1. Go to System Preferences → Security & Privacy → Privacy → Full Disk Access
+1. System Preferences → Security & Privacy → Privacy → Full Disk Access
 2. Add Terminal (or your terminal app) to the list
-3. For newer macOS versions, you may also need to grant network permissions
+3. For newer macOS versions, grant network permissions
 
 Alternatively, run with sudo if permission errors occur.
 
@@ -134,109 +118,70 @@ Alternatively, run with sudo if permission errors occur.
 
 **Linux:**
 ```bash
-# Check if you have the required permissions
 ip link show
-
-# If you get permission denied, run with sudo:
 sudo python3 app/lldp_app.py
 ```
 
 **macOS:**
 ```bash
-# List available interfaces
 ifconfig
-
-# If packet capture fails, try with sudo:
 sudo python3 app/lldp_app.py
 ```
 
 **Windows:**
 ```bash
-# List available interfaces
 ipconfig
-
-# If packet capture fails, try running as Administrator
+# Run as Administrator
 ```
 
 ### Port already in use
 
-If port 5002 is already in use, you can modify the port in `app/lldp_app.py`:
-
+Modify the port in `app/lldp_app.py`:
 ```python
 PORT = 5003  # Change to your desired port
 ```
 
-Then restart the application.
-
 ### Import errors
 
-If you encounter import errors:
-
 ```bash
-# Make sure all dependencies are installed
 pip3 install -r requirements.txt
-
-# On Linux, ensure system libraries are installed:
+# On Linux:
 sudo apt-get install python3-dev libpcap-dev
 ```
 
 ### Interface not detected
 
-1. Ensure you have proper permissions (sudo/root if needed)
+1. Ensure proper permissions (sudo/root if needed)
 2. Check that the interface exists:
    - Linux: `ip link show` or `ifconfig`
    - macOS: `ifconfig`
    - Windows: `ipconfig`
 3. Make sure the interface is up and connected
 
-### Permission denied errors
-
-**Linux:**
-- Run with `sudo python3 app/lldp_app.py`
-- Or set capabilities (see "Running Without Sudo" section above)
-
-**macOS:**
-- Run with `sudo python3 app/lldp_app.py`
-- Or grant network permissions in System Preferences
-
-**Windows:**
-- Run as Administrator
-- Or use WSL2 for better compatibility
-
 ## Development
 
 ### Virtual Environment (Recommended)
 
-It's recommended to use a virtual environment:
-
 ```bash
-# Create virtual environment
 python3 -m venv venv
-
-# Activate virtual environment
-# Linux/macOS:
-source venv/bin/activate
-# Windows:
-venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-
-# Run the application
 python app/lldp_app.py
 ```
 
 ### Project Structure
 
 ```
-lldp-switch-logger/
+flukenet/
 ├── app/
 │   ├── lldp_app.py      # Main application
 │   └── templates/
 │       └── index.html   # Web UI
-├── data/                # CSV logs directory
+├── data/                # CSV logs directory (gitignored)
+├── .gitignore
 ├── requirements.txt     # Python dependencies
-└── README.md           # This file
+└── README.md
 ```
 
 ## License
