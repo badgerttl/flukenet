@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full text-white">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlukeNet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --fluke-bg: #1a1a1a;
+      --fluke-card: #252525;
+      --fluke-border: #3a3a3a;
+      --fluke-amber: #d4a574;
+      --fluke-amber-dark: #b8945f;
+      --fluke-amber-light: #e8c49a;
+      --fluke-text: #e5e5e5;
+      --fluke-text-muted: #9a9a9a;
+    }
+    body { 
+      font-family: 'Inter', sans-serif;
+      background: var(--fluke-bg);
+      background-image: 
+        radial-gradient(circle at 20% 50%, rgba(212, 165, 116, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(212, 165, 116, 0.02) 0%, transparent 50%);
+    }
+    .fluke-card { 
+      background: var(--fluke-card);
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--fluke-border);
+      padding: 1.5rem;
+      transition: all 0.2s ease;
+    }
+    .fluke-card:hover {
+      border-color: rgba(212, 165, 116, 0.2);
+    }
+    .status-dot { 
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+    .status-active { background: var(--fluke-amber); }
+    .status-inactive { background: var(--fluke-text-muted); }
+    .status-error { background: #c85a5a; }
+    .pulse { animation: pulse 1.5s infinite; }
+    @keyframes pulse { 
+      0%, 100% { opacity: 1; } 
+      50% { opacity: 0.5; } 
+    }
+    .btn-primary {
+      background: var(--fluke-amber);
+      color: var(--fluke-bg);
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover {
+      background: var(--fluke-amber-dark);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(212, 165, 116, 0.3);
+    }
+    .btn-secondary {
+      background: var(--fluke-card);
+      border: 1px solid var(--fluke-border);
+      color: var(--fluke-text);
+      transition: all 0.2s ease;
+    }
+    .btn-secondary:hover {
+      border-color: var(--fluke-amber);
+      color: var(--fluke-amber-light);
+    }
+    .btn-danger {
+      background: #8b3a3a;
+      color: white;
+      transition: all 0.2s ease;
+    }
+    .btn-danger:hover {
+      background: #a04545;
+      transform: translateY(-1px);
+    }
+    .btn-success {
+      background: #4a7c59;
+      color: white;
+      transition: all 0.2s ease;
+    }
+    .btn-success:hover {
+      background: #5a8c69;
+      transform: translateY(-1px);
+    }
+    input, select {
+      background: var(--fluke-bg);
+      border: 1px solid var(--fluke-border);
+      color: var(--fluke-text);
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--fluke-amber);
+      box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.1);
+    }
+    table thead {
+      background: var(--fluke-bg);
+    }
+    table tbody tr {
+      border-color: var(--fluke-border);
+    }
+    table tbody tr:hover {
+      background: rgba(212, 165, 116, 0.05);
+    }
+    .amber-flash {
+      animation: amberFlash 0.6s ease-out;
+    }
+    @keyframes amberFlash {
+      0% {
+        background-color: var(--fluke-card);
+        border-color: var(--fluke-border);
+      }
+      50% {
+        background-color: rgba(212, 165, 116, 0.15);
+        border-color: var(--fluke-amber);
+        box-shadow: 0 0 20px rgba(212, 165, 116, 0.3);
+      }
+      100% {
+        background-color: var(--fluke-card);
+        border-color: var(--fluke-border);
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen py-8 px-4">
+
+<div class="max-w-6xl mx-auto space-y-8">
+
+  <!-- Header -->
+  <div class="text-center mb-2">
+    <h1 class="text-5xl font-bold mb-3" style="color: var(--fluke-amber); letter-spacing: -0.02em;">FlukeNet</h1>
+    <p class="text-sm" style="color: var(--fluke-text-muted); letter-spacing: 0.05em;">REAL-TIME MONITORING • CSV HISTORY • LIVE UPDATES</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="fluke-card">
+    <div class="flex flex-col gap-5">
+      <div class="flex-1">
+        <label class="block text-xs font-semibold mb-2 uppercase tracking-wider" style="color: var(--fluke-text-muted);">Network Interface</label>
+        <select id="iface-select" class="w-full px-4 py-3 rounded-lg text-sm font-medium">
+          <option value="">Loading interfaces...</option>
+        </select>
+      </div>
+      <div class="flex gap-3 justify-center flex-wrap">
+        <button id="start-btn" class="btn-primary px-6 py-2.5 rounded-lg flex items-center gap-2 text-sm">
+          <span class="status-dot status-active"></span> Start
+        </button>
+        <button id="stop-btn" class="btn-danger px-6 py-2.5 rounded-lg hidden flex items-center gap-2 text-sm">
+          <span class="status-dot status-error"></span> Stop
+        </button>
+        <button id="reset-sniffing-btn" class="btn-secondary px-6 py-2.5 rounded-lg flex items-center gap-2 text-sm">
+          Reset Sniffing
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local Interface and Connected Switch -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Local Interface -->
+    <div id="local-interface-card" class="fluke-card">
+      <h3 class="text-lg font-semibold mb-4 text-center uppercase tracking-wide" style="color: var(--fluke-amber-light);">Local Interface</h3>
+      <div id="local-content" class="text-center py-6">
+        <p style="color: var(--fluke-text-muted);">Select an interface</p>
+      </div>
+    </div>
+
+    <!-- Current Switch -->
+    <div id="connected-switch-card" class="fluke-card"
+         hx-get="/api/switch"
+         hx-trigger="load, every 2s"
+         hx-swap="innerHTML"
+         hx-target="#current-switch-content">
+      <h3 class="text-lg font-semibold mb-4 uppercase tracking-wide" style="color: var(--fluke-amber-light);">Connected Switch</h3>
+      <div id="current-switch-content" class="text-left">
+        <p style="color: var(--fluke-text-muted);">Ready. Click Start to begin.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detection History -->
+  <div class="fluke-card">
+    <div class="flex justify-between items-center mb-5">
+      <h3 class="text-lg font-semibold uppercase tracking-wide" style="color: var(--fluke-amber-light);">Detection History</h3>
+      <div class="flex gap-2">
+        <a href="/download" 
+          class="btn-success inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium">
+          Download Log
+        </a>
+        <button id="reset-log-btn" class="btn-danger inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium">
+          Delete Log
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto -mx-2 px-2">
+      <table class="min-w-full">
+        <thead>
+          <tr>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Time</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Switch</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Port</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">MAC</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Chassis</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Desc</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Caps</th>
+            <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style="color: var(--fluke-text-muted);">Mgmt IP</th>
+          </tr>
+        </thead>
+        <tbody id="history-body"
+              hx-get="/api/history"
+              hx-trigger="load, every 2s"
+              hx-swap="innerHTML">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+</div>
+
+<script>
+  let currentInterface = null;
+  let lastKnownStatus = null;
+  let statusCheckInterval = null;
+  let previousSwitchContent = null;
+  let previousLocalContent = null;
+
+  function refreshLocalInterface(iface) {
+    if (!iface) return;
+    fetch(`/api/local/${iface}`)
+      .then(r => r.text())
+      .then(html => {
+        const localContent = document.getElementById('local-content');
+        const currentContent = html;
+        if (previousLocalContent !== null && previousLocalContent !== currentContent) {
+          if (!currentContent.includes('Select an interface')) {
+            triggerAmberFlash('local-interface-card');
+          }
+        }
+        localContent.innerHTML = html;
+        previousLocalContent = currentContent;
+      })
+      .catch(err => console.error('Error refreshing local interface:', err));
+  }
+
+  function refreshInterfaceDropdown() {
+    fetch('/api/interfaces')
+      .then(r => r.text())
+      .then(html => {
+        const select = document.getElementById('iface-select');
+        const currentValue = select.value;
+        select.innerHTML = html;
+        if (currentValue) {
+          select.value = currentValue;
+        }
+      })
+      .catch(err => console.error('Error refreshing interface dropdown:', err));
+  }
+
+  function checkInterfaceStatus() {
+    const iface = document.getElementById('iface-select').value;
+    if (!iface) {
+      currentInterface = null;
+      lastKnownStatus = null;
+      return;
+    }
+
+    if (iface !== currentInterface) {
+      currentInterface = iface;
+      lastKnownStatus = null;
+      refreshLocalInterface(iface);
+      return;
+    }
+
+    refreshLocalInterface(iface);
+
+    fetch(`/api/interface-status/${iface}`)
+      .then(r => r.json())
+      .then(data => {
+        const currentStatus = data.status;
+        if (lastKnownStatus !== null && lastKnownStatus !== currentStatus) {
+          console.log(`Interface ${iface} status changed from ${lastKnownStatus} to ${currentStatus}`);
+          refreshInterfaceDropdown();
+        }
+        lastKnownStatus = currentStatus;
+      })
+      .catch(err => {
+        console.error('Error checking interface status:', err);
+        refreshInterfaceDropdown();
+      });
+  }
+
+  function triggerAmberFlash(cardId) {
+    const card = document.getElementById(cardId);
+    if (card) {
+      card.classList.remove('amber-flash');
+      void card.offsetWidth;
+      card.classList.add('amber-flash');
+      setTimeout(() => {
+        card.classList.remove('amber-flash');
+      }, 600);
+    }
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'current-switch-content') {
+      const currentContent = event.detail.target.innerHTML;
+      if (previousSwitchContent !== null && previousSwitchContent !== currentContent) {
+        if (!currentContent.includes('Ready') && !currentContent.includes('Sniffing')) {
+          triggerAmberFlash('connected-switch-card');
+        }
+      }
+      previousSwitchContent = currentContent;
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    fetch('/api/interfaces')
+      .then(r => r.text())
+      .then(html => {
+        const select = document.getElementById('iface-select');
+        select.innerHTML = html;
+        if (select.value) {
+          currentInterface = select.value;
+          refreshLocalInterface(select.value);
+          statusCheckInterval = setInterval(checkInterfaceStatus, 3000);
+        }
+        const switchContent = document.getElementById('current-switch-content');
+        if (switchContent) {
+          previousSwitchContent = switchContent.innerHTML;
+        }
+        const localContent = document.getElementById('local-content');
+        if (localContent) {
+          previousLocalContent = localContent.innerHTML;
+        }
+      })
+      .catch(() => {
+        document.getElementById('iface-select').innerHTML = '<option value="">Failed to load</option>';
+      });
+  });
+
+  document.getElementById('iface-select').addEventListener('change', function() {
+    const iface = this.value;
+    currentInterface = iface;
+    lastKnownStatus = null;
+    if (iface) {
+      refreshLocalInterface(iface);
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+      statusCheckInterval = setInterval(checkInterfaceStatus, 3000);
+    } else {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
+      }
+      const localContent = document.getElementById('local-content');
+      localContent.innerHTML = '<p style="color: var(--fluke-text-muted);">Select an interface</p>';
+      previousLocalContent = localContent.innerHTML;
+    }
+  });
+
+  document.getElementById('start-btn').addEventListener('click', async function() {
+    const iface = document.getElementById('iface-select').value;
+    if (!iface) return alert("Select interface");
+    const res = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interface: iface })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      document.getElementById('start-btn').classList.add('hidden');
+      document.getElementById('stop-btn').classList.remove('hidden');
+    } else {
+      alert(data.message);
+    }
+  });
+
+  document.getElementById('stop-btn').addEventListener('click', function() {
+    fetch('/api/stop', { method: 'POST' }).then(() => {
+      document.getElementById('start-btn').classList.remove('hidden');
+      document.getElementById('stop-btn').classList.add('hidden');
+    });
+  });
+
+  document.getElementById('reset-sniffing-btn').addEventListener('click', function() {
+    fetch('/api/reset-sniffing', { method: 'POST' }).then(() => {
+      document.getElementById('start-btn').classList.remove('hidden');
+      document.getElementById('stop-btn').classList.add('hidden');
+    });
+  });
+
+  document.getElementById('reset-log-btn').addEventListener('click', function() {
+    if (!confirm("Delete all logs? This cannot be undone.")) return;
+    fetch('/api/reset-log', { method: 'POST' }).then(() => {
+      location.reload();
+    });
+  });
+</script>
+
+</body>
+</html>

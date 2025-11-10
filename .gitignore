@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated data files
+data/switch_port.csv
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
