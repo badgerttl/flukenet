@@ -53,10 +53,10 @@ pip install -r requirements.txt
 
 ```bash
 # Linux/macOS (may require sudo for packet capture)
-python3 app/lldp_app.py
+python3 app/flukenet.py
 
 # Windows
-python app/lldp_app.py
+python app/flukenet.py
 ```
 
 The application will be available at `http://localhost:5002`
@@ -119,13 +119,13 @@ Alternatively, run with sudo if permission errors occur.
 **Linux:**
 ```bash
 ip link show
-sudo python3 app/lldp_app.py
+sudo python3 app/flukenet.py
 ```
 
 **macOS:**
 ```bash
 ifconfig
-sudo python3 app/lldp_app.py
+sudo python3 app/flukenet.py
 ```
 
 **Windows:**
@@ -136,7 +136,7 @@ ipconfig
 
 ### Port already in use
 
-Modify the port in `app/lldp_app.py`:
+Modify the port in `app/flukenet.py`:
 ```python
 PORT = 5003  # Change to your desired port
 ```
@@ -167,7 +167,7 @@ python3 -m venv venv
 source venv/bin/activate  # Linux/macOS
 # venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-python app/lldp_app.py
+python app/flukenet.py
 ```
 
 ### Project Structure
@@ -175,7 +175,7 @@ python app/lldp_app.py
 ```
 flukenet/
 ├── app/
-│   ├── lldp_app.py      # Main application
+│   ├── flukenet.py      # Main application
 │   └── templates/
 │       └── index.html   # Web UI
 ├── data/                # CSV logs directory (gitignored)
