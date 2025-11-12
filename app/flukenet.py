@@ -81,7 +81,7 @@ def get_interfaces():
 def parse_tlv(raw):
     i = 0
     chassis = port = sys_name = None
-    info = {"TTL": "", "Port Desc": "", "Sys Desc": "", "Caps": "", "Mgmt IP": ""}
+    info = {"TTL": "", "Port Desc": "", "Sys Desc": "", "Caps": "", "Mgmt IP": "", "VLAN": "", "MAC/PHY": ""}
     while i < len(raw) - 1:
         hdr = int.from_bytes(raw[i:i+2], 'big')
         typ = (hdr >> 9) & 0x7F
@@ -104,14 +104,103 @@ def parse_tlv(raw):
         elif typ == 6:
             info["Sys Desc"] = val.decode('utf-8', errors='ignore').strip()
         elif typ == 7 and leng >= 4:
-            caps = int.from_bytes(val[:2], 'big')
-            names = [n for b, n in [
-                (1,"Other"), (2,"Repeater"), (4,"Bridge"), (8,"WLAN"),
-                (16,"Router"), (32,"Phone"), (64,"DOCSIS"), (128,"Station")
-            ] if caps & b]
-            info["Caps"] = ", ".join(names)
-        elif typ == 8 and leng >= 5 and val[0] == 4:
-            info["Mgmt IP"] = '.'.join(str(b) for b in val[1:5])
+            # System Capabilities TLV: 2 bytes system capabilities, 2 bytes enabled capabilities
+            sys_caps = int.from_bytes(val[0:2], 'big')
+            enabled_caps = int.from_bytes(val[2:4], 'big')
+            cap_names = []
+            for bit, name in [(1,"Other"), (2,"Repeater"), (4,"Bridge"), (8,"WLAN"),
+                             (16,"Router"), (32,"Phone"), (64,"DOCSIS"), (128,"Station")]:
+                if sys_caps & bit:
+                    if enabled_caps & bit:
+                        cap_names.append(f"{name}*")
+                    else:
+                        cap_names.append(name)
+            info["Caps"] = ", ".join(cap_names) if cap_names else "—"
+        elif typ == 8 and leng >= 5:
+            # Management Address TLV structure (IEEE 802.1AB):
+            # Byte 0: Management Address String Length (includes subtype byte, so actual address length = this - 1)
+            # Byte 1: Management Address Subtype (1=IPv4, 2=IPv6, 6=MAC, etc.)
+            # Bytes 2 to (1+addr_len): The actual management address
+            # Byte (2+addr_len): Interface Numbering Subtype
+            # Bytes after: Interface Number (variable length, typically 4 bytes for ifIndex)
+            # Optional: OID Length and OID
+            mgmt_addr_str_len = val[0]
+            if mgmt_addr_str_len > 0 and len(val) >= mgmt_addr_str_len + 1:
+                addr_subtype = val[1]
+                addr_len = mgmt_addr_str_len - 1  # Subtract 1 for the subtype byte
+                if addr_len > 0 and len(val) >= 2 + addr_len:
+                    addr_bytes = val[2:2+addr_len]
+                    mgmt_addr_str = ""
+                    if addr_subtype == 1 and addr_len == 4:  # IPv4
+                        mgmt_addr_str = '.'.join(str(b) for b in addr_bytes)
+                    elif addr_subtype == 2 and addr_len == 16:  # IPv6
+                        # Format IPv6 as groups of 4 hex digits
+                        ipv6_parts = [f'{int.from_bytes(addr_bytes[i:i+2], "big"):04x}' for i in range(0, 16, 2)]
+                        mgmt_addr_str = ':'.join(ipv6_parts)
+                    elif addr_subtype == 6 and addr_len == 6:  # MAC
+                        mgmt_addr_str = ':'.join(f'{b:02x}' for b in addr_bytes)
+                    else:
+                        # Unknown subtype, show as hex
+                        mgmt_addr_str = ':'.join(f'{b:02x}' for b in addr_bytes)
+                    
+                    # Extract interface number if present
+                    if len(val) >= 2 + addr_len + 1:
+                        iface_num_subtype = val[2 + addr_len]
+                        # Interface number is typically 4 bytes for ifIndex (subtype 1 or 2)
+                        if len(val) >= 2 + addr_len + 5:
+                            iface_num = int.from_bytes(val[2 + addr_len + 1:2 + addr_len + 5], 'big')
+                            if iface_num > 0:
+                                info["Mgmt IP"] = f"{mgmt_addr_str} (ifIndex {iface_num})"
+                            else:
+                                info["Mgmt IP"] = mgmt_addr_str
+                        else:
+                            info["Mgmt IP"] = mgmt_addr_str
+                    else:
+                        info["Mgmt IP"] = mgmt_addr_str
+        elif typ == 127 and leng >= 6:  # Organizationally Specific TLV
+            oui_bytes = val[0:3]
+            oui = int.from_bytes(oui_bytes, 'big')
+            if len(val) >= 4:
+                subtype = val[3]
+                # IEEE 802.1 OUI (00:80:C2) - Port VLAN ID
+                # OUI bytes: 0x00, 0x80, 0xC2 = 0x0080C2
+                if oui == 0x0080C2 and subtype == 1 and len(val) >= 6:
+                    # Port VLAN ID (PVID): VLAN ID is in bytes 4-5, upper 4 bits are reserved
+                    vlan_id = int.from_bytes(val[4:6], 'big') & 0x0FFF
+                    if vlan_id > 0:  # Only set if valid (0 is typically not used)
+                        info["VLAN"] = str(vlan_id)
+                # IEEE 802.3 OUI (00:12:0F) - MAC/PHY Configuration/Status
+                # OUI bytes: 0x00, 0x12, 0x0F = 0x00120F (or 0x120F, same value)
+                elif (oui == 0x00120F or oui == 0x120F) and subtype == 1 and len(val) >= 9:
+                    # MAC/PHY Configuration/Status TLV structure:
+                    # Byte 4: Auto-negotiation support/status (bit 0: supported, bit 1: enabled)
+                    # Byte 5: Auto-negotiation capabilities
+                    # Bytes 6-7: Operational MAU type
+                    auto_neg = val[4] if len(val) > 4 else 0
+                    auto_neg_caps = val[5] if len(val) > 5 else 0
+                    mau_type = int.from_bytes(val[6:8], 'big') if len(val) >= 8 else 0
+                    
+                    mac_phy_parts = []
+                    if auto_neg & 0x01:
+                        mac_phy_parts.append("Auto-neg supported")
+                    if auto_neg & 0x02:
+                        mac_phy_parts.append("Auto-neg enabled")
+                    if mau_type > 0:
+                        # Common MAU types (simplified)
+                        mau_names = {
+                            0x0001: "10BASE5", 0x0002: "FOIRL", 0x0003: "10BASE2",
+                            0x0004: "10BASE-T", 0x0005: "10BASE-FP", 0x0006: "10BASE-FB",
+                            0x0007: "10BASE-FL", 0x0008: "10BROAD36", 0x0009: "10BASE-T HD",
+                            0x000A: "10BASE-T FD", 0x000B: "10BASE-FL HD", 0x000C: "10BASE-FL FD",
+                            0x000D: "100BASE-T4", 0x000E: "100BASE-X HD", 0x000F: "100BASE-X FD",
+                            0x0010: "100BASE-T2 HD", 0x0011: "100BASE-T2 FD", 0x0012: "1000BASE-X HD",
+                            0x0013: "1000BASE-X FD", 0x0014: "1000BASE-T HD", 0x0015: "1000BASE-T FD",
+                            0x0016: "10GBASE-X", 0x0017: "10GBASE-W", 0x0018: "10GBASE-R"
+                        }
+                        mau_name = mau_names.get(mau_type, f"MAU-{mau_type:04X}")
+                        mac_phy_parts.append(mau_name)
+                    if mac_phy_parts:
+                        info["MAC/PHY"] = ", ".join(mac_phy_parts)
     return chassis, port, sys_name, info
 
 # =============================
@@ -143,19 +232,20 @@ def sniffer(iface):
                 current_switch.update({
                     "mac": switch_mac, "chassis": chassis, "port": port, "name": sys_name,
                     "ttl": info["TTL"], "desc": info["Port Desc"], "sys_desc": info["Sys Desc"],
-                    "caps": info["Caps"], "mgmt_ip": info["Mgmt IP"], "timestamp": timestamp
+                    "caps": info["Caps"], "mgmt_ip": info["Mgmt IP"], "vlan": info["VLAN"], 
+                    "mac_phy": info["MAC/PHY"], "timestamp": timestamp
                 })
 
         if key in seen_keys: return
         seen_keys.add(key)
 
         row = [timestamp, switch_mac, chassis, port, info["TTL"],
-               sys_name, info["Port Desc"], info["Sys Desc"], info["Caps"], info["Mgmt IP"]]
+               sys_name, info["Port Desc"], info["Sys Desc"], info["Caps"], info["Mgmt IP"], info["VLAN"], info["MAC/PHY"]]
         file_exists = os.path.isfile(CSV_FILE) and os.path.getsize(CSV_FILE) > 0
         with open(CSV_FILE, 'a', newline='', encoding='utf-8') as f:
             w = csv.writer(f)
             if not file_exists:
-                w.writerow(["Timestamp","Switch MAC","Chassis ID","Port ID","TTL","System Name","Port Desc","Sys Desc","Caps","Mgmt IP"])
+                w.writerow(["Timestamp","Switch MAC","Chassis ID","Port ID","TTL","System Name","Port Desc","Sys Desc","Caps","Mgmt IP","VLAN","MAC/PHY"])
             w.writerow(row)
 
     try:
@@ -333,11 +423,13 @@ def api_switch():
             <div><span style="color: var(--fluke-text-muted);">Port:</span> <span class="font-mono" style="color: var(--fluke-amber-light);">{s['port']}</span></div>
             <div><span style="color: var(--fluke-text-muted);">Chassis:</span> <span class="font-mono text-xs" style="color: var(--fluke-amber-light);">{s['chassis']}</span></div>
             <div><span style="color: var(--fluke-text-muted);">MAC:</span> <span class="font-mono text-xs" style="color: var(--fluke-amber-light);">{s['mac']}</span></div>
+            <div><span style="color: var(--fluke-text-muted);">VLAN:</span> <span class="font-mono" style="color: var(--fluke-amber-light);">{s.get('vlan', '—') or '—'}</span></div>
             <div><span style="color: var(--fluke-text-muted);">TTL:</span> <span style="color: var(--fluke-text);">{s['ttl']}s</span></div>
             <div><span style="color: var(--fluke-text-muted);">Desc:</span> <span style="color: var(--fluke-text);">{s['desc'] or '—'}</span></div>
             <div><span style="color: var(--fluke-text-muted);">Sys Desc:</span> <span class="text-xs" style="color: var(--fluke-text);">{(s['sys_desc'] or '')[:60]}{'...' if len(s['sys_desc'] or '') > 60 else ''}</span></div>
-            <div><span style="color: var(--fluke-text-muted);">Caps:</span> <span class="text-xs" style="color: var(--fluke-text);">{s['caps'] or '—'}</span></div>
-            <div><span style="color: var(--fluke-text-muted);">Mgmt IP:</span> <span class="font-mono" style="color: var(--fluke-amber-light);">{s['mgmt_ip'] or '—'}</span></div>
+            <div><span style="color: var(--fluke-text-muted);">Caps:</span> <span class="text-xs" style="color: var(--fluke-text);">{s.get('caps', '—') or '—'}</span></div>
+            <div><span style="color: var(--fluke-text-muted);">Mgmt IP:</span> <span class="font-mono" style="color: var(--fluke-amber-light);">{s.get('mgmt_ip', '—') or '—'}</span></div>
+            <div><span style="color: var(--fluke-text-muted);">MAC/PHY:</span> <span class="text-xs" style="color: var(--fluke-text);">{s.get('mac_phy', '—') or '—'}</span></div>
           </div>
         </div>
         """
@@ -345,7 +437,7 @@ def api_switch():
 @app.route('/api/history')
 def api_history():
     if not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0:
-        return '<tr><td colspan="8" class="text-center py-8" style="color: var(--fluke-text-muted);">No switches detected yet</td></tr>'
+        return '<tr><td colspan="10" class="text-center py-8" style="color: var(--fluke-text-muted);">No switches detected yet</td></tr>'
 
     rows = []
     try:
@@ -359,14 +451,16 @@ def api_history():
                   <td class="py-3 px-2 font-mono" style="color: var(--fluke-amber-light);">{row['Port ID']}</td>
                   <td class="py-3 px-2 font-mono text-xs" style="color: var(--fluke-text);">{row['Switch MAC']}</td>
                   <td class="py-3 px-2 font-mono text-xs" style="color: var(--fluke-text);">{row['Chassis ID']}</td>
+                  <td class="py-3 px-2 font-mono text-xs" style="color: var(--fluke-amber-light);">{row.get('VLAN', '—') or '—'}</td>
                   <td class="py-3 px-2 text-xs" style="color: var(--fluke-text);">{row['Port Desc'] or '—'}</td>
-                  <td class="py-3 px-2 text-xs" style="color: var(--fluke-text);">{row['Caps'] or '—'}</td>
-                  <td class="py-3 px-2 font-mono text-xs" style="color: var(--fluke-amber-light);">{row['Mgmt IP'] or '—'}</td>
+                  <td class="py-3 px-2 text-xs" style="color: var(--fluke-text);">{row.get('Caps', '—') or '—'}</td>
+                  <td class="py-3 px-2 font-mono text-xs" style="color: var(--fluke-amber-light);">{row.get('Mgmt IP', '—') or '—'}</td>
+                  <td class="py-3 px-2 text-xs" style="color: var(--fluke-text);">{row.get('MAC/PHY', '—') or '—'}</td>
                 </tr>
                 """)
     except Exception as e:
         print(f"[!] CSV read error: {e}")
-        return '<tr><td colspan="8" class="text-center py-8" style="color: #c85a5a;">Error reading log</td></tr>'
+        return '<tr><td colspan="10" class="text-center py-8" style="color: #c85a5a;">Error reading log</td></tr>'
 
     return ''.join(reversed(rows))
 
