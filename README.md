@@ -184,6 +184,3 @@ flukenet/
 └── README.md
 ```
 
-## License
-
-[Your License Here]
